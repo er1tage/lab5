@@ -26,14 +26,12 @@ void generateAdjMatrix(int n, float p, int** adj) {
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             if (i == j) {
-                // Петля
                 adj[i][j] = ((float)rand() / RAND_MAX < p) ? 1 : 0;
             }
             else if (i < j) {
-                // Обычное ребро
                 int val = ((float)rand() / RAND_MAX < p) ? 1 : 0;
                 adj[i][j] = val;
-                adj[j][i] = val; // симметрия
+                adj[j][i] = val;
             }
         }
     }
@@ -50,7 +48,7 @@ void printMatrix(int** mat, int n, int m, const char* title) {
 int getSizeFromAdj(int n, int** adj) {
     int size = 0;
     for (int i = 0; i < n; i++) {
-        if (adj[i][i] == 1) size++; // петля
+        if (adj[i][i] == 1) size++;
         for (int j = i + 1; j < n; j++) {
             if (adj[i][j] == 1) size++;
         }
@@ -69,7 +67,7 @@ void analyzeByAdj(int n, int** adj) {
                 if (i != j) neighbors++;
             }
         }
-        if (adj[i][i] == 1) step++; // петля
+        if (adj[i][i] == 1) step++;
 
         printf("Вершина %d: степень %d", i + 1, step);
         if (step == 0) printf(" (изолированная)");
@@ -78,35 +76,16 @@ void analyzeByAdj(int n, int** adj) {
         printf("\n");
     }
 }
-int buildIncMatrix(int n, int** adj, int** inc) {
-    int edges = 0;
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            if (adj[i][j] == 1 && i == j) {
-                inc[i][edges] = 2; // петля
-                edges++;
-            }
-            else if (adj[i][j] == 1 && i < j) {
-                inc[i][edges] = 1;
-                inc[j][edges] = 1;
-                edges++;
-            }
-        }
-    }
-    return edges;
-}
 void analyzeByInc(int n, int edges, int** inc) {
     printf("\nАнализ вершин:\n");
-
     for (int i = 0; i < n; i++) {
         int step = 0;
-        int neighbors[20] = { 0 }; // массив-флаг: был ли сосед
+        int neighbors[20] = { 0 };
         int countNeighbors = 0;
-        // Считаем степень и ищем соседей
+
         for (int j = 0; j < edges; j++) {
             if (inc[i][j] == 1) {
                 step++;
-                // Ищем, с какой ещё вершиной соединено это ребро
                 for (int k = 0; k < n; k++) {
                     if (k != i && inc[k][j] == 1 && !neighbors[k]) {
                         neighbors[k] = 1;
@@ -115,7 +94,7 @@ void analyzeByInc(int n, int edges, int** inc) {
                 }
             }
             else if (inc[i][j] == 2) {
-                step += 2; // петля
+                step += 2;
             }
         }
         printf("Вершина %d: степень %d", i + 1, step);
@@ -143,7 +122,9 @@ int inputGraphParams(int* n, float* p) {
 int main() {
     int n = 0;
     float p;
-    int** adj = NULL;
+    int** mat = NULL;
+    int max_cols = 0;
+    int adj_generated = 0; // флаг: сгенерирована ли матрица смежности
     int choice;
 
     srand(time(NULL));
@@ -160,42 +141,76 @@ int main() {
             printf("Выход из программы.\n");
             break;
         }
-        if (choice == 1 || choice == 2) {
-            freeMatrix(adj, n);
-            adj = NULL;
-
-            if (!inputGraphParams(&n, &p)) continue;
-
-            adj = createMatrix(n, n);
-            generateAdjMatrix(n, p, adj);
-        }
         // ЗАДАНИЕ 1
         if (choice == 1) {
             printf("\n--- Задание 1 ---\n");
-            printMatrix(adj, n, n, "Матрица смежности");
-            printf("\nРазмер графа (количество рёбер): %d\n", getSizeFromAdj(n, adj));
-            analyzeByAdj(n, adj);
+
+            freeMatrix(mat, n);
+            mat = NULL;
+            adj_generated = 0;
+
+            if (!inputGraphParams(&n, &p)) continue;
+
+            int max_edges = n * (n + 1) / 2;
+            max_cols = (max_edges > n) ? max_edges : n;
+
+            mat = createMatrix(n, max_cols);
+            generateAdjMatrix(n, p, mat);
+            adj_generated = 1;
+
+            printMatrix(mat, n, n, "Матрица смежности");
+            printf("\nРазмер графа (количество рёбер): %d\n", getSizeFromAdj(n, mat));
+            analyzeByAdj(n, mat);
         }
         // ЗАДАНИЕ 2
         else if (choice == 2) {
             printf("\n--- Задание 2 ---\n");
-
-            int max_edges = n * (n + 1) / 2;
-            int** inc = createMatrix(n, max_edges);
-
-            int edges = buildIncMatrix(n, adj, inc);
-
-            printMatrix(inc, n, edges, "Матрица инцидентности");
+            if (!adj_generated) {
+                printf("Сначала выполните Задание 1 (матрица смежности не сгенерирована)!\n");
+                continue;
+            }
+            // 1) Копируем смежность в правую часть строк
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    mat[i][max_cols - n + j] = mat[i][j];
+                }
+            }
+            // 2) Обнуляем левую часть (где будет инцидентность)
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < max_cols - n; j++) {
+                    mat[i][j] = 0;
+                }
+            }
+            // 3) Строим инцидентность в левой части, читая смежность из правой
+            int edges = 0;
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    int a = mat[i][max_cols - n + j];
+                    if (a == 1 && i == j) {
+                        mat[i][edges] = 2;
+                        edges++;
+                    }
+                    else if (a == 1 && i < j) {
+                        mat[i][edges] = 1;
+                        mat[j][edges] = 1;
+                        edges++;
+                    }
+                }
+            }
+            printMatrix(mat, n, edges, "Матрица инцидентности");
             printf("Размер графа (по матрице инцидентности): %d\n", edges);
-            analyzeByInc(n, edges, inc);
+            analyzeByInc(n, edges, mat);
 
-            freeMatrix(inc, n);
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    mat[i][j] = mat[i][max_cols - n + j];
+                }
+            }
         }
         else {
             printf("Неверный пункт меню!\n");
         }
     }
-    freeMatrix(adj, n);
-
+    freeMatrix(mat, n);
     return 0;
 }
